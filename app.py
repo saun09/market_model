@@ -1,31 +1,30 @@
 import streamlit as st
-from forecast_utils import prepare_forecast_table
-import matplotlib.pyplot as plt
+from forecast_utils import extract_numeric_metrics, forecast_pu_consumption
 
-st.set_page_config(page_title="Market Demand Forecast", layout="centered")
+st.title("📊 Forecast Anything: Market Metric Forecaster")
 
-st.title(" AI-powered Market Forecasting Tool")
-st.write("Use assumptions or real data to project demand/value for the next 10 years.")
+uploaded_file = st.file_uploader("Upload Spreadsheet", type=["xlsx"])
+if uploaded_file:
+    st.info("📂 Extracting metrics...")
+    metrics_df = extract_numeric_metrics(uploaded_file)
 
-# Sidebar Inputs
-base_value = st.number_input("Current Year Demand / Value (e.g. 17500 Cr)", min_value=0.0, value=17500.0)
-base_year = st.number_input("Base Year (e.g. 2023)", value=2023)
-growth_rate = st.slider("Expected Annual Growth Rate (%)", min_value=0.0, max_value=25.0, value=7.0)
-forecast_years = st.slider("Forecast Period (Years)", min_value=1, max_value=20, value=10)
+    if metrics_df.empty:
+        st.error("❌ No numeric metrics found.")
+    else:
+        selected_row = st.selectbox(
+            "Select the metric to forecast:",
+            metrics_df.apply(lambda row: f"{row['Label']} ({row['Value']} {row['Unit']}) — {row['Sheet']}", axis=1)
+        )
 
-if st.button("Generate Forecast"):
-    df_forecast = prepare_forecast_table(base_year, base_value, forecast_years, growth_rate / 100)
-    st.write("### 📊 Forecast Table")
-    st.dataframe(df_forecast)
+        metric = metrics_df[metrics_df.apply(lambda row: f"{row['Label']} ({row['Value']} {row['Unit']}) — {row['Sheet']}" == selected_row, axis=1)].iloc[0]
+        base_value = metric["Value"]
+        base_year = st.number_input("Base Year (e.g., 2022)", value=2022)
 
-    # Plot
-    st.write("### 📉 Forecast Plot")
-    fig, ax = plt.subplots()
-    ax.plot(df_forecast['Year'], df_forecast['Forecast'], marker='o')
-    ax.set_xlabel("Year")
-    ax.set_ylabel("Forecasted Value")
-    ax.set_title("Market Demand / Value Forecast")
-    st.pyplot(fig)
+        cagr_input = st.number_input("Enter CAGR (%)", min_value=0.0, max_value=100.0, value=10.0, step=0.1)
 
-st.write("---")
-st.caption("Prototype by Saundarya for internship project.")
+        forecast_years = st.slider("Forecast Period (Years)", 1, 15, 5)
+
+        df_forecast = forecast_pu_consumption(base_value, base_year, cagr_input / 100, forecast_years)
+
+        st.write(f"### 📈 Forecast for: `{metric['Label']}`")
+        st.dataframe(df_forecast)
